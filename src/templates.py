@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from functools import lru_cache
 from fastapi.responses import HTMLResponse
 
@@ -12,5 +13,7 @@ def _index_template() -> str:
 
 
 def render_index() -> HTMLResponse:
-    html = _index_template().replace("{{FPS}}", str(FPS))
+    html = _index_template()
+    # Replace any whitespace variation inside the template braces, e.g. "{{FPS}}", "{{ FPS }}"
+    html = re.sub(r'\{\{\s*FPS\s*\}\}', str(FPS), html)
     return HTMLResponse(html)

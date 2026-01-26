@@ -8,3 +8,4 @@ FPS: float = 24.0
 BASE = Path(__file__).resolve().parent.parent
 VIDEOS_DIR = BASE / "data" / "videos"
 BOXES_DIR = BASE / "data" / "boxes"
+TEMPLATES_DIR = BASE / "templates"

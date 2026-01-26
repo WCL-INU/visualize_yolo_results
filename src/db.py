@@ -41,9 +41,15 @@ def ensure_view(video_id: str) -> str:
     if video_id in _video_cache:
         return _video_cache[video_id][1]
 
-    pq = BOXES_DIR / f"{video_id}.parquet"
-    if not pq.exists():
-        raise HTTPException(status_code=404, detail=f"Parquet not found: {pq}")
+    # Support split parquet files like "{video_id}_*.parquet"
+    pattern = BOXES_DIR / f"{video_id}_*.parquet"
+    matches = sorted(BOXES_DIR.glob(f"{video_id}_*.parquet"))
+
+    # Use the glob pattern so parquet_scan reads all parts when there are multiple files
+    if not matches:
+        raise HTTPException(status_code=404, detail=f"Parquet not found: {pattern}")
+
+    pq = pattern
 
     view = f"v_{video_id}".replace("-", "_").replace(".", "_")
     con.execute(

@@ -64,6 +64,17 @@
     white-space: pre-wrap;
     font-size: 12px;
   }
+
+  #seek {
+    height: 18px;
+  }
+
+  #time {
+    font-variant-numeric: tabular-nums;
+    font-size: 12px;
+    min-width: 120px;
+    text-align: right;
+  }
 </style>
 
 <div class="wrap">
@@ -76,7 +87,7 @@
     </div>
 
     <div class="player" id="player">
-      <video id="v" controls></video>
+      <video id="v" preload="metadata" playsinline></video>
       <canvas id="c"></canvas>
     </div>
 
@@ -85,6 +96,11 @@
       <button id="nextHit">Next hit</button>
       <button id="prevF">-1 frame</button>
       <button id="nextF">+1 frame</button>
+
+      <button id="playPause">Play</button>
+      <input id="seek" type="range" min="0" max="0" step="0.001" value="0" style="flex:1; min-width:220px;">
+      <span id="time">0.000 / 0.000</span>
+
       <span id="info"></span>
     </div>
 
@@ -113,6 +129,11 @@
   const overlayToggle = document.getElementById('overlay');
   const boxesPre = document.getElementById('boxes');
   const info = document.getElementById('info');
+
+  const playPauseBtn = document.getElementById('playPause');
+  const seek = document.getElementById('seek');
+  const timeLbl = document.getElementById('time');
+  let isSeeking = false;
 
   const tl = document.getElementById('timeline');
   const tlx = tl.getContext('2d');
@@ -168,6 +189,12 @@
     v.src = url;
     v.load();
 
+    // 커스텀 컨트롤 초기화
+    playPauseBtn.textContent = 'Play';
+    seek.value = '0';
+    seek.max = '0';
+    timeLbl.textContent = '0.000 / 0.000';
+
     // timeline 로드(1초 bin)
     const tr = await fetch(`/api/videos/${video_id}/timeline?bin_sec=${binSec}`);
     const tj = await tr.json();
@@ -179,6 +206,11 @@
       resizeCanvasToVideo();
       resizeTimeline();
       drawTimeline();
+      // duration 기반 seek bar 설정
+      if (Number.isFinite(v.duration)) {
+        seek.max = String(Math.max(0, v.duration));
+        timeLbl.textContent = `${v.currentTime.toFixed(3)} / ${v.duration.toFixed(3)}`;
+      }
     };
   }
 
@@ -255,6 +287,88 @@
     }
   }
 
+  function updatePlayPauseLabel() {
+    playPauseBtn.textContent = v.paused ? 'Play' : 'Pause';
+  }
+
+  function updateTimeUI() {
+    if (!isSeeking && Number.isFinite(v.currentTime)) {
+      seek.value = String(v.currentTime);
+    }
+    const dur = Number.isFinite(v.duration) ? v.duration : 0;
+    timeLbl.textContent = `${v.currentTime.toFixed(3)} / ${dur.toFixed(3)}`;
+  }
+
+  playPauseBtn.addEventListener('click', async () => {
+    if (v.paused) {
+      try { await v.play(); } catch (e) { /* autoplay 정책 등 */ }
+    } else {
+      v.pause();
+    }
+    updatePlayPauseLabel();
+  });
+
+  // 비디오 화면 클릭으로 재생/정지 토글
+  v.addEventListener('click', async () => {
+    if (v.paused) {
+      try { await v.play(); } catch (e) { /* ignore */ }
+    } else {
+      v.pause();
+    }
+    updatePlayPauseLabel();
+  });
+
+  v.addEventListener('play', updatePlayPauseLabel);
+  v.addEventListener('pause', updatePlayPauseLabel);
+  v.addEventListener('timeupdate', updateTimeUI);
+  v.addEventListener('durationchange', () => {
+    if (Number.isFinite(v.duration)) seek.max = String(Math.max(0, v.duration));
+    updateTimeUI();
+  });
+
+  // seek bar 드래그 중에는 서버 요청(박스 fetch)과 UI 갱신이 흔들리지 않게 표시만 갱신
+  seek.addEventListener('input', () => {
+    isSeeking = true;
+    const t = Number(seek.value);
+    const dur = Number.isFinite(v.duration) ? v.duration : 0;
+    timeLbl.textContent = `${t.toFixed(3)} / ${dur.toFixed(3)}`;
+  });
+
+  seek.addEventListener('change', () => {
+    const t = Number(seek.value);
+    v.currentTime = clamp(t, 0, Math.max(0, (Number.isFinite(v.duration) ? v.duration : 0) - 0.001));
+    isSeeking = false;
+    // 즉시 반영되도록
+    lastFrame = -1;
+  });
+
+  // 키보드 단축키 (Space: 재생/정지, ←/→: 프레임 이동, N/P: next/prev hit)
+  window.addEventListener('keydown', async (e) => {
+    // 입력창/슬라이더 조작 중이면 방해하지 않음
+    const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
+    if (tag === 'input' || tag === 'select' || tag === 'textarea') return;
+
+    if (e.code === 'Space') {
+      e.preventDefault();
+      if (v.paused) { try { await v.play(); } catch (err) { } } else { v.pause(); }
+      updatePlayPauseLabel();
+    } else if (e.code === 'ArrowLeft') {
+      e.preventDefault();
+      v.currentTime = Math.max(0, v.currentTime - 1 / FPS);
+      lastFrame = -1;
+    } else if (e.code === 'ArrowRight') {
+      e.preventDefault();
+      v.currentTime = v.currentTime + 1 / FPS;
+      lastFrame = -1;
+    } else if (e.key === 'n' || e.key === 'N') {
+      e.preventDefault();
+      jumpHit('next');
+    } else if (e.key === 'p' || e.key === 'P') {
+      e.preventDefault();
+      jumpHit('prev');
+    }
+  });
+
   tl.addEventListener('click', (e) => {
     if (!timeline || !currentVideo || !v.duration) return;
     const rect = tl.getBoundingClientRect();
@@ -292,6 +406,7 @@
     resizeCanvasToVideo();
     resizeTimeline();
     drawTimeline();
+    updateTimeUI();
   });
 
   loadVideos();

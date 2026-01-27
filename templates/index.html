@@ -98,6 +98,17 @@
       <button id="nextF">+1 frame</button>
 
       <button id="playPause">Play</button>
+      <label style="display:flex; align-items:center; gap:4px;">
+        Speed
+        <select id="speed">
+          <option value="0.25">0.25x</option>
+          <option value="0.5">0.5x</option>
+          <option value="1" selected>1x</option>
+          <option value="1.5">1.5x</option>
+          <option value="2">2x</option>
+          <option value="4">4x</option>
+        </select>
+      </label>
       <input id="seek" type="range" min="0" max="0" step="0.001" value="0" style="flex:1; min-width:220px;">
       <span id="time">0.000 / 0.000</span>
 
@@ -133,6 +144,7 @@
   const playPauseBtn = document.getElementById('playPause');
   const seek = document.getElementById('seek');
   const timeLbl = document.getElementById('time');
+  const speedSelect = document.getElementById('speed');
   let isSeeking = false;
 
   const tl = document.getElementById('timeline');
@@ -145,6 +157,7 @@
   const BOX_CHUNK_FRAMES = Math.max(30, Math.round(FPS * 2)); // batch size for box prefetch
   let boxesCache = new Map();
   let inflightBoxes = null;
+  let currentSpeed = parseFloat(speedSelect.value) || 1;
 
   function clamp(x, a, b) { return Math.max(a, Math.min(b, x)); }
 
@@ -163,6 +176,13 @@
     tl.width = Math.floor(v.getBoundingClientRect().width);
     tl.style.width = tl.width + 'px';
     tl.height = Math.floor(rect.height);
+  }
+
+  function setPlaybackRate(rate) {
+    const r = Number.isFinite(rate) ? rate : 1;
+    currentSpeed = r;
+    v.playbackRate = r;
+    speedSelect.value = String(r);
   }
 
   async function loadVideos() {
@@ -192,6 +212,7 @@
     const url = sel.selectedOptions[0].dataset.url;
     v.src = url;
     v.load();
+    setPlaybackRate(currentSpeed);
 
     // 커스텀 컨트롤 초기화
     playPauseBtn.textContent = 'Play';
@@ -371,6 +392,11 @@
   v.addEventListener('durationchange', () => {
     if (Number.isFinite(v.duration)) seek.max = String(Math.max(0, v.duration));
     updateTimeUI();
+  });
+
+  speedSelect.addEventListener('change', () => {
+    const val = parseFloat(speedSelect.value);
+    setPlaybackRate(val);
   });
 
   // seek bar 드래그 중에는 서버 요청(박스 fetch)과 UI 갱신이 흔들리지 않게 표시만 갱신

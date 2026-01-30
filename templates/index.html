@@ -2,78 +2,35 @@
 <meta charset="utf-8">
 <title>Video + YOLO Boxes Viewer</title>
 <style>
-  body {
-    font-family: sans-serif;
-    margin: 0;
-  }
+  body { font-family: sans-serif; margin: 0; }
+  .wrap { display: grid; grid-template-columns: 2fr 1fr; gap: 12px; padding: 12px; }
+  .player { position: relative; width: 100%; }
+  video { max-height: 78vh; background: #00000000; object-fit: contain; }
+  canvas { position: absolute; left: 0; top: 0; pointer-events: none; }
+  .panel { border: 1px solid #ddd; padding: 12px; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 8px 0; }
+  button { padding: 8px 12px; }
+  select { padding: 6px 10px; }
+  #timeline { width: 100%; height: 60px; border: 1px solid #ddd; }
+  pre { white-space: pre-wrap; font-size: 12px; }
+  #seek { height: 18px; }
+  #time { font-variant-numeric: tabular-nums; font-size: 12px; min-width: 120px; text-align: right; }
+  
+  /* 카운터 스타일 */
+  .counter-box { margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid #eee; }
+  .counter-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; font-size: 16px; font-weight: bold; }
+  .counter-controls button { padding: 4px 8px; font-size: 12px; cursor: pointer; }
+  .log-preview { max-height: 150px; overflow-y: auto; background: #f9f9f9; border: 1px solid #eee; padding: 4px; font-size: 11px; margin-top: 8px; }
+  .download-btn { width: 100%; margin-top: 8px; background-color: #4CAF50; color: white; border: none; cursor: pointer; }
+  .download-btn:hover { background-color: #45a049; }
 
-  .wrap {
-    display: grid;
-    grid-template-columns: 2fr 1fr;
-    gap: 12px;
-    padding: 12px;
-  }
-
-  .player {
-    position: relative;
-    width: 100%;
-  }
-
-  video {
-    /* width: 1640px; */
-    max-height: 78vh;
-    background: #00000000;
-    object-fit: contain;
-  }
-
-  canvas {
-    position: absolute;
-    left: 0;
-    top: 0;
-    pointer-events: none;
-  }
-
-  .panel {
-    border: 1px solid #ddd;
-    padding: 12px;
-  }
-
-  .row {
-    display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-    align-items: center;
-    margin: 8px 0;
-  }
-
-  button {
-    padding: 8px 12px;
-  }
-
-  select {
-    padding: 6px 10px;
-  }
-
-  #timeline {
-    width: 100%;
-    height: 60px;
-    border: 1px solid #ddd;
-  }
-
-  pre {
-    white-space: pre-wrap;
+  /* [추가됨] 필터 컨트롤 스타일 */
+  .filter-control {
+    background: #f0f0f0;
+    padding: 8px;
+    border-radius: 4px;
     font-size: 12px;
-  }
-
-  #seek {
-    height: 18px;
-  }
-
-  #time {
-    font-variant-numeric: tabular-nums;
-    font-size: 12px;
-    min-width: 120px;
-    text-align: right;
+    margin-top: 10px;
   }
 </style>
 
@@ -110,8 +67,7 @@
         </select>
       </label>
       <input id="seek" type="range" min="0" max="0" step="0.001" value="0" style="flex:1; min-width:220px;">
-      <span id="time">0.000 / 0.000</span>
-
+      <span id="time">00:00:00 / 00:00:00</span>
       <span id="info"></span>
     </div>
 
@@ -124,7 +80,40 @@
   </div>
 
   <div class="panel">
-    <h3 style="margin-top:0;">Current boxes</h3>
+    <div class="counter-box">
+      <h3 style="margin-top:0;">Bee Counter</h3>
+      <div class="counter-row">
+        <span style="color: blue;">IN (Key: I)</span>
+        <span id="displayIn">0</span>
+        <div class="counter-controls">
+          <button onclick="manualAdjust('in', 1)">+</button>
+          <button onclick="manualAdjust('in', -1)">-</button>
+        </div>
+      </div>
+      <div class="counter-row">
+        <span style="color: red;">OUT (Key: O)</span>
+        <span id="displayOut">0</span>
+        <div class="counter-controls">
+          <button onclick="manualAdjust('out', 1)">+</button>
+          <button onclick="manualAdjust('out', -1)">-</button>
+        </div>
+      </div>
+      <button class="download-btn" onclick="downloadCSV()">Download CSV</button>
+      <div style="font-size: 12px; margin-top: 8px; font-weight: bold;">Recent Logs:</div>
+      <div id="logPreview" class="log-preview"></div>
+    </div>
+
+    <div class="filter-control">
+      <h3 style="margin-top:0; margin-bottom:8px;">Detection Filter</h3>
+      <label title="이 시간(프레임) 이상 제자리에 있으면 숨깁니다">
+        <input type="checkbox" id="staticFilterOn" checked> 
+        Hide Static Objects (Fix Duration: <span id="staticThresDisplay">30</span> frames)
+      </label>
+      <br>
+      <input type="range" id="staticThresRange" min="5" max="150" value="30" style="width:100%">
+    </div>
+
+    <h3 style="margin-top:10px;">Current boxes</h3>
     <pre id="boxes">-</pre>
   </div>
 </div>
@@ -132,52 +121,132 @@
 <script>
   const FPS = Number('{{ FPS }}');
 
+  // --- HTML Elements ---
   const sel = document.getElementById('sel');
   const v = document.getElementById('v');
-  const player = document.getElementById('player');
   const c = document.getElementById('c');
   const ctx = c.getContext('2d');
   const overlayToggle = document.getElementById('overlay');
   const boxesPre = document.getElementById('boxes');
   const info = document.getElementById('info');
-
   const playPauseBtn = document.getElementById('playPause');
   const seek = document.getElementById('seek');
   const timeLbl = document.getElementById('time');
   const speedSelect = document.getElementById('speed');
-  let isSeeking = false;
-
   const tl = document.getElementById('timeline');
   const tlx = tl.getContext('2d');
+  
+  // Filter UI
+  const staticFilterOn = document.getElementById('staticFilterOn');
+  const staticThresRange = document.getElementById('staticThresRange');
+  const staticThresDisplay = document.getElementById('staticThresDisplay');
 
+  // --- Global State ---
+  let isSeeking = false;
   let currentVideo = null;
   let lastFrame = -1;
-  let timeline = null; // Uint16Array-ish (counts per bin)
+  let timeline = null; 
   let binSec = 1;
-  const BOX_CHUNK_FRAMES = Math.max(30, Math.round(FPS * 2)); // batch size for box prefetch
+  const BOX_CHUNK_FRAMES = Math.max(30, Math.round(FPS * 2)); 
   let boxesCache = new Map();
   let inflightBoxes = null;
   let currentSpeed = parseFloat(speedSelect.value) || 1;
 
-  function clamp(x, a, b) { return Math.max(a, Math.min(b, x)); }
+  // --- Counter State ---
+  let countIn = 0;
+  let countOut = 0;
+  let eventLogs = []; 
+  const displayIn = document.getElementById('displayIn');
+  const displayOut = document.getElementById('displayOut');
+  const logPreview = document.getElementById('logPreview');
 
+  // --- [핵심] 정적 물체 필터 로직 ---
+  class StaticObjectFilter {
+    constructor() {
+      // trackers: { x, y, life, maxLife }
+      this.trackers = [];
+      this.distanceThreshold = 20; // 픽셀 단위 허용 오차 (비디오 원본 해상도 기준)
+      this.decayRate = 2;          // 감지 안 될 때 life 감소량
+      this.growthRate = 1;         // 감지 될 때 life 증가량
+    }
+
+    // threshold: 이 값 이상 life가 쌓이면 정적 물체로 판단
+    process(boxes, thresholdFrames) {
+      if (!boxes) return [];
+
+      // 1. 모든 트래커의 생명력(life)을 일단 감소시킴 (Decay step)
+      this.trackers.forEach(t => t.life -= this.decayRate);
+
+      const activeBoxes = [];
+
+      boxes.forEach(box => {
+        // 박스 중심점 계산
+        const bx = box.x + box.width / 2;
+        const by = box.y + box.height / 2;
+        let matched = false;
+
+        // 2. 기존 트래커와 거리 비교
+        for (let t of this.trackers) {
+          const dist = Math.sqrt((t.x - bx) ** 2 + (t.y - by) ** 2);
+          if (dist < this.distanceThreshold) {
+            // 매칭됨: 트래커 위치 업데이트(스무딩) 및 생명력 증가
+            t.x = t.x * 0.7 + bx * 0.3;
+            t.y = t.y * 0.7 + by * 0.3;
+            t.life += (this.decayRate + this.growthRate); // 감소분 보전 + 증가
+            matched = true;
+            
+            // **필터링 판단**: 생명력이 임계치보다 낮으면(아직 움직이는 중이면) 화면에 표시
+            if (t.life < thresholdFrames) {
+              activeBoxes.push(box);
+            }
+            break; 
+          }
+        }
+
+        // 3. 매칭 안 된 새로운 박스는 새 트래커 생성
+        if (!matched) {
+          this.trackers.push({ x: bx, y: by, life: 10 }); // 초기 life 10 부여
+          activeBoxes.push(box);
+        }
+      });
+
+      // 4. 완전히 사라진 트래커 제거 (메모리 관리)
+      this.trackers = this.trackers.filter(t => t.life > 0);
+
+      return activeBoxes;
+    }
+
+    reset() {
+      this.trackers = [];
+    }
+  }
+
+  const staticFilter = new StaticObjectFilter();
+
+  // --- Utility Functions ---
+  function clamp(x, a, b) { return Math.max(a, Math.min(b, x)); }
+  function formatTime(seconds) {
+    if (!Number.isFinite(seconds)) return "00:00:00";
+    const h = Math.floor(seconds / 3600).toString().padStart(2, '0');
+    const m = Math.floor((seconds % 3600) / 60).toString().padStart(2, '0');
+    const s = Math.floor(seconds % 60).toString().padStart(2, '0');
+    return `${h}:${m}:${s}`;
+  }
+
+  // --- Canvas & Video Resizing ---
   function resizeCanvasToVideo() {
-    // video 렌더 크기(표시 크기)에 맞춤
     const rect = v.getBoundingClientRect();
     c.width = Math.floor(rect.width);
     c.height = Math.floor(rect.height);
     c.style.width = rect.width + 'px';
     c.style.height = rect.height + 'px';
   }
-
   function resizeTimeline() {
     const rect = tl.getBoundingClientRect();
-    // timeline 캔버스 크기 설정, width 는 video 표시 크기에 맞춤
     tl.width = Math.floor(v.getBoundingClientRect().width);
     tl.style.width = tl.width + 'px';
     tl.height = Math.floor(rect.height);
   }
-
   function setPlaybackRate(rate) {
     const r = Number.isFinite(rate) ? rate : 1;
     currentSpeed = r;
@@ -185,6 +254,7 @@
     speedSelect.value = String(r);
   }
 
+  // --- Data Loading ---
   async function loadVideos() {
     const r = await fetch('/api/videos');
     const list = await r.json();
@@ -208,67 +278,41 @@
     boxesPre.textContent = '-';
     info.textContent = '';
     clearBoxesCache();
+    resetCounters();
+    staticFilter.reset(); // 비디오 변경 시 필터 초기화
 
     const url = sel.selectedOptions[0].dataset.url;
     v.src = url;
     v.load();
     setPlaybackRate(currentSpeed);
 
-    // 커스텀 컨트롤 초기화
     playPauseBtn.textContent = 'Play';
     seek.value = '0';
     seek.max = '0';
-    timeLbl.textContent = '0.000 / 0.000';
+    timeLbl.textContent = '00:00:00 / 00:00:00';
 
-    // timeline 로드(1초 bin)
     const tr = await fetch(`/api/videos/${video_id}/timeline?bin_sec=${binSec}`);
     const tj = await tr.json();
     timeline = tj.counts;
     drawTimeline();
 
-    // 재생 준비 후 캔버스 리사이즈
     v.onloadedmetadata = () => {
       resizeCanvasToVideo();
       resizeTimeline();
       drawTimeline();
-      // prefetch first chunk to avoid initial draw delay
       schedulePrefetch(0);
-      // duration 기반 seek bar 설정
       if (Number.isFinite(v.duration)) {
         seek.max = String(Math.max(0, v.duration));
-        timeLbl.textContent = `${v.currentTime.toFixed(3)} / ${v.duration.toFixed(3)}`;
+        timeLbl.textContent = `${formatTime(v.currentTime)} / ${formatTime(v.duration)}`;
       }
     };
   }
 
-  function drawBoxes(boxes) {
-    ctx.clearRect(0, 0, c.width, c.height);
-    if (!overlayToggle.checked) return;
-    if (!boxes || boxes.length === 0) return;
-
-    // 원본 픽셀 좌표 -> 현재 표시 크기로 스케일
-    const vw = v.videoWidth;
-    const vh = v.videoHeight;
-    if (!vw || !vh) return;
-    const sx = c.width / vw;
-    const sy = c.height / vh;
-
-    ctx.lineWidth = 2;
-    ctx.strokeStyle = 'red';
-    for (const b of boxes) {
-      const w = b.width * sx;
-      const h = b.height * sy;
-      const x = b.x * sx - w / 2;
-      const y = b.y * sy - h / 2;
-      ctx.strokeRect(x, y, w, h);
-    }
-  }
-
+  // --- Box Fetching ---
   function clearBoxesCache() {
     boxesCache = new Map();
     inflightBoxes = null;
   }
-
   async function fetchBoxesRange(start, end) {
     if (!currentVideo) return {};
     const r = await fetch(`/api/videos/${currentVideo}/boxes_range?start_frame=${start}&end_frame=${end}`);
@@ -279,7 +323,6 @@
     }
     return j.boxes || {};
   }
-
   function schedulePrefetch(frame) {
     const start = Math.max(0, frame - Math.floor(BOX_CHUNK_FRAMES / 3));
     const end = start + BOX_CHUNK_FRAMES - 1;
@@ -293,16 +336,48 @@
     return promise;
   }
 
-  async function getBoxesForFrame(frame) {
-    const cached = boxesCache.get(frame);
-    if (cached) return cached;
-    await schedulePrefetch(frame);
-    return boxesCache.get(frame) || [];
+  // --- Render Loop ---
+  function currentFrame() {
+    return Math.max(0, Math.round(v.currentTime * FPS));
   }
 
-  function currentFrame() {
-    // 고정 FPS 가정
-    return Math.max(0, Math.round(v.currentTime * FPS));
+  function drawBoxes(boxes) {
+    ctx.clearRect(0, 0, c.width, c.height);
+    if (!overlayToggle.checked) return;
+
+    // [수정됨] 정적 필터 적용
+    let boxesToDraw = boxes || [];
+    if (staticFilterOn.checked) {
+      const threshold = parseInt(staticThresRange.value);
+      // 필터링: 오래 머문 박스는 제외된 리스트를 반환
+      boxesToDraw = staticFilter.process(boxes, threshold);
+    } else {
+      // 꺼져있어도 트래커 내부 상태 업데이트를 위해 process는 호출하되 원본 사용
+      staticFilter.process(boxes, 99999);
+    }
+
+    if (boxesToDraw.length === 0) return;
+
+    const vw = v.videoWidth;
+    const vh = v.videoHeight;
+    if (!vw || !vh) return;
+    const sx = c.width / vw;
+    const sy = c.height / vh;
+
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = 'red';
+    for (const b of boxesToDraw) {
+      const w = b.width * sx;
+      const h = b.height * sy;
+      const x = b.x * sx - w / 2;
+      const y = b.y * sy - h / 2;
+      ctx.strokeRect(x, y, w, h);
+    }
+    
+    // 디버깅용: 텍스트 갱신
+    if (boxes) {
+      boxesPre.textContent = `Raw: ${boxes.length}, Filtered: ${boxesToDraw.length}\n` + JSON.stringify(boxesToDraw, null, 2);
+    }
   }
 
   async function tick() {
@@ -311,40 +386,30 @@
       if (f !== lastFrame) {
         lastFrame = f;
         const cached = boxesCache.get(f);
-        if (cached) {
-          boxesPre.textContent = JSON.stringify(cached, null, 2);
-          drawBoxes(cached);
-        } else {
-          // draw nothing while fetching new chunk; fire prefetch in background
-          drawBoxes([]);
-          schedulePrefetch(f).then(() => {
-            const bx = boxesCache.get(currentFrame());
-            if (bx && currentVideo) {
-              boxesPre.textContent = JSON.stringify(bx, null, 2);
-              drawBoxes(bx);
-            }
-          });
+        
+        // 데이터가 있든 없든 drawBoxes를 호출하여(빈 배열이라도) 필터 상태 갱신
+        const boxes = cached || [];
+        if (!cached) {
+            schedulePrefetch(f);
         }
-        info.textContent = `t=${v.currentTime.toFixed(3)}s, frame=${f}`;
+        
+        drawBoxes(boxes);
+        info.textContent = `t=${formatTime(v.currentTime)}, frame=${f}`;
       }
     }
     requestAnimationFrame(tick);
   }
 
+  // --- Timeline Drawing ---
   function drawTimeline() {
     if (!timeline) return;
     if (!tl.width) resizeTimeline();
-
     const W = tl.width, H = tl.height;
     tlx.clearRect(0, 0, W, H);
-
     const n = timeline.length;
     if (n === 0) return;
-
-    // 간단히: count>0 이면 막대 높이를 올림(정규화)
     let maxv = 1;
     for (let i = 0; i < n; i++) maxv = Math.max(maxv, timeline[i]);
-
     for (let i = 0; i < n; i++) {
       const x0 = Math.floor(i * W / n);
       const x1 = Math.floor((i + 1) * W / n);
@@ -355,37 +420,82 @@
     }
   }
 
+  // --- UI Update Helper ---
   function updatePlayPauseLabel() {
     playPauseBtn.textContent = v.paused ? 'Play' : 'Pause';
   }
-
   function updateTimeUI() {
     if (!isSeeking && Number.isFinite(v.currentTime)) {
       seek.value = String(v.currentTime);
     }
     const dur = Number.isFinite(v.duration) ? v.duration : 0;
-    timeLbl.textContent = `${v.currentTime.toFixed(3)} / ${dur.toFixed(3)}`;
+    timeLbl.textContent = `${formatTime(v.currentTime)} / ${formatTime(dur)}`;
   }
 
+  // --- Event Listeners: Counter ---
+  function resetCounters() {
+    countIn = 0; countOut = 0; eventLogs = [];
+    updateCounterUI(); renderLogs();
+  }
+  function updateCounterUI() {
+    if (displayIn) displayIn.textContent = countIn;
+    if (displayOut) displayOut.textContent = countOut;
+  }
+  function renderLogs() {
+    logPreview.innerHTML = '';
+    for (let i = eventLogs.length - 1; i >= 0; i--) {
+      const log = eventLogs[i];
+      const timeStr = formatTime(log.rawTime);
+      const div = document.createElement('div');
+      div.textContent = `[${timeStr}] ${log.type}`;
+      logPreview.appendChild(div);
+    }
+  }
+  function addLog(type) {
+    eventLogs.push({ rawTime: v.currentTime, type: type });
+    renderLogs(); 
+  }
+  function removeLastLog(type) {
+    for (let i = eventLogs.length - 1; i >= 0; i--) {
+      if (eventLogs[i].type === type) {
+        eventLogs.splice(i, 1); renderLogs(); return;
+      }
+    }
+  }
+  window.manualAdjust = function(type, delta) {
+    if (type === 'in') {
+      if (delta > 0) { countIn++; } 
+      else if (countIn > 0) { countIn--; removeLastLog('IN'); }
+    } else {
+      if (delta > 0) { countOut++; } 
+      else if (countOut > 0) { countOut--; removeLastLog('OUT'); }
+    }
+    updateCounterUI();
+  };
+  window.downloadCSV = function() {
+    if (eventLogs.length === 0) { alert("No logs."); return; }
+    let csv = "data:text/csv;charset=utf-8,Video Time,Real Time,Type\n"; 
+    eventLogs.forEach(row => {
+      csv += `${formatTime(row.rawTime)},${formatTime(row.rawTime + 28800)},${row.type}\n`;
+    });
+    csv += `\nSummary,,\nTotal IN,${countIn},\nTotal OUT,${countOut},\n`;
+    const link = document.createElement("a");
+    link.setAttribute("href", encodeURI(csv));
+    link.setAttribute("download", currentVideo ? `log_${currentVideo}.csv` : "log.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // --- Event Listeners: Player ---
   playPauseBtn.addEventListener('click', async () => {
-    if (v.paused) {
-      try { await v.play(); } catch (e) { /* autoplay 정책 등 */ }
-    } else {
-      v.pause();
-    }
+    v.paused ? v.play().catch(()=>{}) : v.pause();
     updatePlayPauseLabel();
   });
-
-  // 비디오 화면 클릭으로 재생/정지 토글
   v.addEventListener('click', async () => {
-    if (v.paused) {
-      try { await v.play(); } catch (e) { /* ignore */ }
-    } else {
-      v.pause();
-    }
+    v.paused ? v.play().catch(()=>{}) : v.pause();
     updatePlayPauseLabel();
   });
-
   v.addEventListener('play', updatePlayPauseLabel);
   v.addEventListener('pause', updatePlayPauseLabel);
   v.addEventListener('timeupdate', updateTimeUI);
@@ -393,99 +503,54 @@
     if (Number.isFinite(v.duration)) seek.max = String(Math.max(0, v.duration));
     updateTimeUI();
   });
-
-  speedSelect.addEventListener('change', () => {
-    const val = parseFloat(speedSelect.value);
-    setPlaybackRate(val);
-  });
-
-  // seek bar 드래그 중에는 서버 요청(박스 fetch)과 UI 갱신이 흔들리지 않게 표시만 갱신
+  speedSelect.addEventListener('change', () => setPlaybackRate(parseFloat(speedSelect.value)));
   seek.addEventListener('input', () => {
     isSeeking = true;
-    const t = Number(seek.value);
     const dur = Number.isFinite(v.duration) ? v.duration : 0;
-    timeLbl.textContent = `${t.toFixed(3)} / ${dur.toFixed(3)}`;
+    timeLbl.textContent = `${formatTime(Number(seek.value))} / ${formatTime(dur)}`;
   });
-
   seek.addEventListener('change', () => {
-    const t = Number(seek.value);
-    v.currentTime = clamp(t, 0, Math.max(0, (Number.isFinite(v.duration) ? v.duration : 0) - 0.001));
-    isSeeking = false;
-    // 즉시 반영되도록
-    lastFrame = -1;
+    v.currentTime = clamp(Number(seek.value), 0, v.duration - 0.001);
+    isSeeking = false; lastFrame = -1;
   });
-
-  // 키보드 단축키 (Space: 재생/정지, ←/→: 프레임 이동, N/P: next/prev hit)
-  window.addEventListener('keydown', async (e) => {
-    // 입력창/슬라이더 조작 중이면 방해하지 않음
+  window.addEventListener('keydown', (e) => {
     const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
-    if (tag === 'input' || tag === 'select' || tag === 'textarea') return;
-
-    if (e.code === 'Space') {
-      e.preventDefault();
-      if (v.paused) { try { await v.play(); } catch (err) { } } else { v.pause(); }
-      updatePlayPauseLabel();
-    } else if (e.code === 'ArrowLeft') {
-      e.preventDefault();
-      moveFrame(-1);
-      lastFrame = -1;
-    } else if (e.code === 'ArrowRight') {
-      e.preventDefault();
-      moveFrame(1);
-      lastFrame = -1;
-    } else if (e.key === 'n' || e.key === 'N') {
-      e.preventDefault();
-      jumpHit('next');
-    } else if (e.key === 'p' || e.key === 'P') {
-      e.preventDefault();
-      jumpHit('prev');
-    }
+    if (['input','select','textarea'].includes(tag)) return;
+    if (e.code === 'Space') { e.preventDefault(); v.paused ? v.play().catch(()=>{}) : v.pause(); }
+    else if (e.code === 'ArrowLeft') { e.preventDefault(); moveFrame(-1); lastFrame = -1; }
+    else if (e.code === 'ArrowRight') { e.preventDefault(); moveFrame(1); lastFrame = -1; }
+    else if (e.key.toLowerCase() === 'n') { e.preventDefault(); jumpHit('next'); }
+    else if (e.key.toLowerCase() === 'p') { e.preventDefault(); jumpHit('prev'); }
+    else if (e.key.toLowerCase() === 'i') { e.preventDefault(); window.manualAdjust('in', 1); addLog('IN'); updateCounterUI(); }
+    else if (e.key.toLowerCase() === 'o') { e.preventDefault(); window.manualAdjust('out', 1); addLog('OUT'); updateCounterUI(); }
   });
-
   tl.addEventListener('click', (e) => {
     if (!timeline || !currentVideo || !v.duration) return;
     const rect = tl.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const n = timeline.length;
-    const idx = clamp(Math.floor(x * n / rect.width), 0, n - 1);
-    const t = idx * binSec;
-    v.currentTime = clamp(t, 0, Math.max(0, v.duration - 0.01));
+    const t = clamp(Math.floor((e.clientX - rect.left) * timeline.length / rect.width), 0, timeline.length - 1) * binSec;
+    v.currentTime = clamp(t, 0, v.duration - 0.01);
   });
-
   document.getElementById('reload').onclick = loadVideos;
-  sel.onchange = async () => selectVideo(sel.value);
-
-  async function moveFrame(delta) {
-    if (!currentVideo) return;
-    v.currentTime = (currentFrame() + delta) / FPS + 0.0001; // 약간 오프셋 줘서 프레임 계산 오류 방지
-  }
-
-  document.getElementById('prevF').onclick = () => {
-    moveFrame(-1);
-  };
-  document.getElementById('nextF').onclick = () => {
-    moveFrame(1);
-  };
-
-  async function jumpHit(dir) {
-    if (!currentVideo) return;
-    const f = currentFrame();
-    const r = await fetch(`/api/videos/${currentVideo}/${dir}_hit?frame=${f}`);
-    if (!r.ok) return;
-    const j = await r.json();
-    if (j && j.frame != null) {
-      v.currentTime = j.frame / FPS + 0.0001; // 약간 오프셋 줘서 프레임 계산 오류 방지
-    }
-  }
+  sel.onchange = () => selectVideo(sel.value);
+  document.getElementById('prevF').onclick = () => moveFrame(-1);
+  document.getElementById('nextF').onclick = () => moveFrame(1);
   document.getElementById('prevHit').onclick = () => jumpHit('prev');
   document.getElementById('nextHit').onclick = () => jumpHit('next');
+  window.addEventListener('resize', () => { resizeCanvasToVideo(); resizeTimeline(); drawTimeline(); updateTimeUI(); });
 
-  window.addEventListener('resize', () => {
-    resizeCanvasToVideo();
-    resizeTimeline();
-    drawTimeline();
-    updateTimeUI();
+  // [추가됨] 필터 슬라이더 이벤트
+  staticThresRange.addEventListener('input', () => {
+    staticThresDisplay.textContent = staticThresRange.value;
+    // 슬라이더 조정 시 즉시 반영을 위해 현재 프레임 다시 그리기 시도
+    lastFrame = -1; 
   });
+
+  async function moveFrame(delta) { if(currentVideo) v.currentTime = (currentFrame() + delta) / FPS + 0.0001; }
+  async function jumpHit(dir) {
+    if(!currentVideo) return;
+    const r = await fetch(`/api/videos/${currentVideo}/${dir}_hit?frame=${currentFrame()}`);
+    if(r.ok) { const j = await r.json(); if(j.frame != null) v.currentTime = j.frame / FPS + 0.0001; }
+  }
 
   loadVideos();
   tick();

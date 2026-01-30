@@ -284,7 +284,7 @@
 
   // --- Data Loading ---
   async function loadVideos() {
-    const r = await fetch('/api/videos');
+    const r = await fetch('api/videos');
     const list = await r.json();
     sel.innerHTML = '';
     for (const it of list) {
@@ -318,7 +318,7 @@
     seek.max = '0';
     timeLbl.textContent = '00:00:00 / 00:00:00';
 
-    const tr = await fetch(`/api/videos/${video_id}/timeline?bin_sec=${binSec}`);
+    const tr = await fetch(`api/videos/${video_id}/timeline?bin_sec=${binSec}`);
     const tj = await tr.json();
     timeline = tj.counts;
     drawTimeline();
@@ -342,7 +342,7 @@
   }
   async function fetchBoxesRange(start, end) {
     if (!currentVideo) return {};
-    const r = await fetch(`/api/videos/${currentVideo}/boxes_range?start_frame=${start}&end_frame=${end}`);
+    const r = await fetch(`api/videos/${currentVideo}/boxes_range?start_frame=${start}&end_frame=${end}`);
     if (!r.ok) return {};
     const j = await r.json();
     for (const [k, v] of Object.entries(j.boxes || {})) {
@@ -583,7 +583,7 @@
     let searchFrame = currentFrame();
 
     while (skips < MAX_SKIPS) {
-      const r = await fetch(`/api/videos/${currentVideo}/${dir}_hit?frame=${searchFrame}`);
+      const r = await fetch(`api/videos/${currentVideo}/${dir}_hit?frame=${searchFrame}`);
       if (!r.ok) break;
       const j = await r.json();
 

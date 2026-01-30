@@ -566,45 +566,27 @@
   sel.onchange = () => selectVideo(sel.value);
   document.getElementById('prevF').onclick = () => moveFrame(-1);
   document.getElementById('nextF').onclick = () => moveFrame(1);
+  // [수정] 스캔 로직 제거: 바로 점프
   document.getElementById('prevHit').onclick = () => jumpHit('prev');
   document.getElementById('nextHit').onclick = () => jumpHit('next');
   window.addEventListener('resize', () => { resizeCanvasToVideo(); resizeTimeline(); drawTimeline(); updateTimeUI(); });
 
   async function moveFrame(delta) { if (currentVideo) v.currentTime = (currentFrame() + delta) / FPS + 0.0001; }
 
+  // [수정됨] Scanning 루프 제거하고 즉시 이동
   async function jumpHit(dir) {
     if (!currentVideo) return;
 
-    scanStatus.style.display = 'inline';
-    scanStatus.textContent = 'Scanning...';
-
-    const MAX_SKIPS = 50;
-    let skips = 0;
-    let searchFrame = currentFrame();
-
-    while (skips < MAX_SKIPS) {
-      const r = await fetch(`api/videos/${currentVideo}/${dir}_hit?frame=${searchFrame}`);
-      if (!r.ok) break;
+    // 단순 호출
+    const r = await fetch(`/api/videos/${currentVideo}/${dir}_hit?frame=${currentFrame()}`);
+    if (r.ok) {
       const j = await r.json();
-
-      if (j.frame == null) break;
-
-      const boxes = await getBoxesForFrame(j.frame);
-
-      if (boxes && boxes.length > 0) {
+      if (j.frame != null) {
         v.currentTime = j.frame / FPS + 0.0001;
-        break;
       } else {
-        searchFrame = j.frame;
-        skips++;
+        // 더 이상 히트가 없음
+        alert("No more hits."); // 필요하면 주석 해제
       }
-    }
-
-    if (skips >= MAX_SKIPS) {
-      scanStatus.textContent = 'No active hits found';
-      setTimeout(() => { scanStatus.style.display = 'none'; }, 2000);
-    } else {
-      scanStatus.style.display = 'none';
     }
   }
 

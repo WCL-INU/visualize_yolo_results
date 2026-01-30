@@ -17,17 +17,27 @@ def video_id_from_name(path: Path) -> str:
     return path.stem
 
 
+def video_id_from_parquet(path: Path) -> str:
+    name = path.stem
+    if "_" in name:
+        return "_".join(name.split("_")[:-2])  # Remove the last two parts
+    return name
+
+
 def get_video_list() -> List[Dict]:
-    if not VIDEOS_DIR.exists():
+    if not BOXES_DIR.exists():
         return []
     out = []
-    for path in sorted(VIDEOS_DIR.glob("*.mp4")):
-        vid = video_id_from_name(path)
+    for path in sorted(BOXES_DIR.glob("*.parquet")):
+        vid = video_id_from_parquet(path)
+        video_path = VIDEOS_DIR / f"{vid}.mp4"
+        if not video_path.exists():
+            continue
         out.append(
             {
                 "video_id": vid,
-                "file": path.name,
-                "url": f"videos/{path.name}",
+                "file": video_path.name,
+                "url": f"videos/{video_path.name}",
                 "fps": FPS,
             }
         )

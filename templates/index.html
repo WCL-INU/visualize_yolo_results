@@ -9,7 +9,7 @@
   canvas { position: absolute; left: 0; top: 0; pointer-events: none; }
   .panel { border: 1px solid #ddd; padding: 12px; }
   .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 8px 0; }
-  button { padding: 8px 12px; }
+  button { padding: 8px 12px; cursor: pointer; }
   select { padding: 6px 10px; }
   #timeline { width: 100%; height: 60px; border: 1px solid #ddd; }
   pre { white-space: pre-wrap; font-size: 12px; }
@@ -19,18 +19,38 @@
   /* 카운터 스타일 */
   .counter-box { margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid #eee; }
   .counter-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; font-size: 16px; font-weight: bold; }
-  .counter-controls button { padding: 4px 8px; font-size: 12px; cursor: pointer; }
-  .log-preview { max-height: 150px; overflow-y: auto; background: #f9f9f9; border: 1px solid #eee; padding: 4px; font-size: 11px; margin-top: 8px; }
-  .download-btn { width: 100%; margin-top: 8px; background-color: #4CAF50; color: white; border: none; cursor: pointer; }
+  .counter-controls button { padding: 4px 8px; font-size: 12px; }
+  .log-preview { max-height: 200px; overflow-y: auto; background: #f9f9f9; border: 1px solid #eee; padding: 4px; font-size: 11px; margin-top: 8px; }
+  
+  .btn-group { display: flex; gap: 5px; margin-top: 8px; }
+  .download-btn { flex: 1; background-color: #4CAF50; color: white; border: none; }
   .download-btn:hover { background-color: #45a049; }
+  .clear-btn { flex: 1; background-color: #f44336; color: white; border: none; }
+  .clear-btn:hover { background-color: #d32f2f; }
 
-  /* [추가됨] 필터 컨트롤 스타일 */
-  .filter-control {
-    background: #f0f0f0;
-    padding: 8px;
+  /* [추가됨] 완료 상태 버튼 스타일 */
+  #toggleCompleteBtn {
+    font-weight: bold;
+    border: 1px solid #ccc;
     border-radius: 4px;
-    font-size: 12px;
-    margin-top: 10px;
+    transition: all 0.2s;
+  }
+  /* 미완료 상태 (기본) */
+  #toggleCompleteBtn.incomplete {
+    background-color: #f0f0f0;
+    color: #555;
+  }
+  #toggleCompleteBtn.incomplete:hover {
+    background-color: #e0e0e0;
+  }
+  /* 완료 상태 */
+  #toggleCompleteBtn.completed {
+    background-color: #4CAF50; /* Green */
+    color: white;
+    border-color: #45a049;
+  }
+  #toggleCompleteBtn.completed:hover {
+    background-color: #45a049;
   }
 </style>
 
@@ -40,6 +60,9 @@
       <label>Video:</label>
       <select id="sel"></select>
       <button id="reload">Reload list</button>
+      
+      <button id="toggleCompleteBtn" class="incomplete" onclick="toggleCompletion()">Mark as Completed</button>
+      
       <label style="margin-left:12px;"><input type="checkbox" id="overlay" checked> Overlay</label>
     </div>
 
@@ -51,7 +74,8 @@
     <div class="row">
       <button id="prevHit">Prev hit</button>
       <button id="nextHit">Next hit</button>
-      <button id="prevF">-1 frame</button>
+      
+      <button id="prevF" style="margin-left:auto;">-1 frame</button>
       <button id="nextF">+1 frame</button>
 
       <button id="playPause">Play</button>
@@ -81,7 +105,11 @@
 
   <div class="panel">
     <div class="counter-box">
-      <h3 style="margin-top:0;">Bee Counter</h3>
+      <h3 style="margin-top:0;">Video Log</h3>
+      <div style="font-size:11px; color:#666; margin-bottom:10px;">
+        * Logs & Completion status are saved automatically.
+      </div>
+
       <div class="counter-row">
         <span style="color: blue;">IN (Key: I)</span>
         <span id="displayIn">0</span>
@@ -98,22 +126,20 @@
           <button onclick="manualAdjust('out', -1)">-</button>
         </div>
       </div>
-      <button class="download-btn" onclick="downloadCSV()">Download CSV</button>
-      <div style="font-size: 12px; margin-top: 8px; font-weight: bold;">Recent Logs:</div>
+      
+      <div class="btn-group">
+        <button class="download-btn" onclick="downloadCSV()">Download This Log</button>
+        <button class="clear-btn" onclick="clearCurrentVideoLog()">Clear This Video</button>
+      </div>
+      
+      <div style="font-size: 12px; margin-top: 8px; font-weight: bold;">Current Video Logs:</div>
       <div id="logPreview" class="log-preview"></div>
     </div>
 
-    <div class="filter-control">
-      <h3 style="margin-top:0; margin-bottom:8px;">Detection Filter</h3>
-      <label title="이 시간(프레임) 이상 제자리에 있으면 숨깁니다">
-        <input type="checkbox" id="staticFilterOn" checked> 
-        Hide Static Objects (Fix Duration: <span id="staticThresDisplay">30</span> frames)
-      </label>
-      <br>
-      <input type="range" id="staticThresRange" min="5" max="150" value="30" style="width:100%">
-    </div>
-
     <h3 style="margin-top:10px;">Current boxes</h3>
+    <div style="font-size:11px; color:#666; margin-bottom:4px;">
+      * Viewing pre-cleaned data
+    </div>
     <pre id="boxes">-</pre>
   </div>
 </div>
@@ -135,15 +161,12 @@
   const speedSelect = document.getElementById('speed');
   const tl = document.getElementById('timeline');
   const tlx = tl.getContext('2d');
-  
-  // Filter UI
-  const staticFilterOn = document.getElementById('staticFilterOn');
-  const staticThresRange = document.getElementById('staticThresRange');
-  const staticThresDisplay = document.getElementById('staticThresDisplay');
+  const toggleCompleteBtn = document.getElementById('toggleCompleteBtn'); // [추가]
 
   // --- Global State ---
   let isSeeking = false;
   let currentVideo = null;
+  let videoList = []; // [추가] 비디오 목록 저장용
   let lastFrame = -1;
   let timeline = null; 
   let binSec = 1;
@@ -152,76 +175,17 @@
   let inflightBoxes = null;
   let currentSpeed = parseFloat(speedSelect.value) || 1;
 
-  // --- Counter State ---
+  // --- Counter & Session State ---
+  let sessionData = {}; 
+  let completedStates = {}; // [추가] 완료 상태 저장용 { "video_id": true/false }
+
   let countIn = 0;
   let countOut = 0;
   let eventLogs = []; 
+
   const displayIn = document.getElementById('displayIn');
   const displayOut = document.getElementById('displayOut');
   const logPreview = document.getElementById('logPreview');
-
-  // --- [핵심] 정적 물체 필터 로직 ---
-  class StaticObjectFilter {
-    constructor() {
-      // trackers: { x, y, life, maxLife }
-      this.trackers = [];
-      this.distanceThreshold = 20; // 픽셀 단위 허용 오차 (비디오 원본 해상도 기준)
-      this.decayRate = 2;          // 감지 안 될 때 life 감소량
-      this.growthRate = 1;         // 감지 될 때 life 증가량
-    }
-
-    // threshold: 이 값 이상 life가 쌓이면 정적 물체로 판단
-    process(boxes, thresholdFrames) {
-      if (!boxes) return [];
-
-      // 1. 모든 트래커의 생명력(life)을 일단 감소시킴 (Decay step)
-      this.trackers.forEach(t => t.life -= this.decayRate);
-
-      const activeBoxes = [];
-
-      boxes.forEach(box => {
-        // 박스 중심점 계산
-        const bx = box.x + box.width / 2;
-        const by = box.y + box.height / 2;
-        let matched = false;
-
-        // 2. 기존 트래커와 거리 비교
-        for (let t of this.trackers) {
-          const dist = Math.sqrt((t.x - bx) ** 2 + (t.y - by) ** 2);
-          if (dist < this.distanceThreshold) {
-            // 매칭됨: 트래커 위치 업데이트(스무딩) 및 생명력 증가
-            t.x = t.x * 0.7 + bx * 0.3;
-            t.y = t.y * 0.7 + by * 0.3;
-            t.life += (this.decayRate + this.growthRate); // 감소분 보전 + 증가
-            matched = true;
-            
-            // **필터링 판단**: 생명력이 임계치보다 낮으면(아직 움직이는 중이면) 화면에 표시
-            if (t.life < thresholdFrames) {
-              activeBoxes.push(box);
-            }
-            break; 
-          }
-        }
-
-        // 3. 매칭 안 된 새로운 박스는 새 트래커 생성
-        if (!matched) {
-          this.trackers.push({ x: bx, y: by, life: 10 }); // 초기 life 10 부여
-          activeBoxes.push(box);
-        }
-      });
-
-      // 4. 완전히 사라진 트래커 제거 (메모리 관리)
-      this.trackers = this.trackers.filter(t => t.life > 0);
-
-      return activeBoxes;
-    }
-
-    reset() {
-      this.trackers = [];
-    }
-  }
-
-  const staticFilter = new StaticObjectFilter();
 
   // --- Utility Functions ---
   function clamp(x, a, b) { return Math.max(a, Math.min(b, x)); }
@@ -233,55 +197,133 @@
     return `${h}:${m}:${s}`;
   }
 
-  // --- Canvas & Video Resizing ---
-  function resizeCanvasToVideo() {
-    const rect = v.getBoundingClientRect();
-    c.width = Math.floor(rect.width);
-    c.height = Math.floor(rect.height);
-    c.style.width = rect.width + 'px';
-    c.style.height = rect.height + 'px';
+  // --- LocalStorage Management ---
+  function loadSessionFromStorage() {
+    // 1. 로그 데이터 로드
+    const savedSession = localStorage.getItem('BEE_COUNTER_SESSION_V2');
+    if (savedSession) {
+      try { sessionData = JSON.parse(savedSession); } catch (e) { sessionData = {}; }
+    }
+    // 2. 완료 상태 데이터 로드
+    const savedStates = localStorage.getItem('BEE_COMPLETED_STATES');
+    if (savedStates) {
+      try { completedStates = JSON.parse(savedStates); } catch (e) { completedStates = {}; }
+    }
   }
-  function resizeTimeline() {
-    const rect = tl.getBoundingClientRect();
-    tl.width = Math.floor(v.getBoundingClientRect().width);
-    tl.style.width = tl.width + 'px';
-    tl.height = Math.floor(rect.height);
+
+  function saveSessionToStorage() {
+    if (currentVideo) {
+      sessionData[currentVideo] = { in: countIn, out: countOut, logs: eventLogs };
+    }
+    localStorage.setItem('BEE_COUNTER_SESSION_V2', JSON.stringify(sessionData));
   }
-  function setPlaybackRate(rate) {
-    const r = Number.isFinite(rate) ? rate : 1;
-    currentSpeed = r;
-    v.playbackRate = r;
-    speedSelect.value = String(r);
+  
+  function saveCompletionState() {
+    localStorage.setItem('BEE_COMPLETED_STATES', JSON.stringify(completedStates));
+  }
+
+  // --- [추가] Completion Toggle Logic ---
+  window.toggleCompletion = function() {
+    if (!currentVideo) return;
+    
+    // 상태 반전
+    const isComplete = !completedStates[currentVideo];
+    completedStates[currentVideo] = isComplete;
+    saveCompletionState();
+    
+    // UI 업데이트 (버튼 및 드롭다운)
+    updateCompletionUI();
+    renderVideoDropdown(); // 드롭다운의 체크표시 갱신
+  };
+  
+  function updateCompletionUI() {
+    if (!currentVideo) return;
+    
+    const isComplete = completedStates[currentVideo];
+    if (isComplete) {
+      toggleCompleteBtn.textContent = "Completed ✅";
+      toggleCompleteBtn.className = "completed";
+    } else {
+      toggleCompleteBtn.textContent = "Mark as Completed";
+      toggleCompleteBtn.className = "incomplete";
+    }
   }
 
   // --- Data Loading ---
   async function loadVideos() {
+    loadSessionFromStorage(); 
+
     const r = await fetch('/api/videos');
-    const list = await r.json();
+    videoList = await r.json(); // 전역 변수에 저장
+    
+    renderVideoDropdown(); // 드롭다운 그리기 분리
+
+    if (videoList.length) {
+      // 이전에 선택했던 비디오가 있으면 유지, 없으면 첫 번째
+      if (!currentVideo) currentVideo = videoList[0].video_id;
+      // 셀렉트 박스 값 동기화
+      sel.value = currentVideo;
+      await selectVideo(sel.value);
+    }
+  }
+  
+  // [수정] 드롭다운 렌더링 함수 (완료 표시 포함)
+  function renderVideoDropdown() {
+    // 현재 선택된 값 기억
+    const currentSelection = sel.value;
+    
     sel.innerHTML = '';
-    for (const it of list) {
+    for (const it of videoList) {
       const opt = document.createElement('option');
       opt.value = it.video_id;
-      opt.textContent = it.video_id;
+      
+      // 완료된 영상이면 앞에 체크표시 추가
+      const isDone = completedStates[it.video_id] ? "✅ " : "";
+      opt.textContent = `${isDone}${it.video_id}`;
+      
       opt.dataset.url = it.url;
       sel.appendChild(opt);
     }
-    if (list.length) {
-      sel.value = list[0].video_id;
-      await selectVideo(sel.value);
+    
+    // 값 복구
+    if (currentSelection) {
+      sel.value = currentSelection;
     }
   }
 
   async function selectVideo(video_id) {
+    if (currentVideo) {
+      sessionData[currentVideo] = { in: countIn, out: countOut, logs: eventLogs };
+      saveSessionToStorage();
+    }
+
     currentVideo = video_id;
     lastFrame = -1;
     boxesPre.textContent = '-';
     info.textContent = '';
     clearBoxesCache();
-    resetCounters();
-    staticFilter.reset(); // 비디오 변경 시 필터 초기화
+    
+    // 세션 로드
+    if (sessionData[video_id]) {
+      const data = sessionData[video_id];
+      countIn = data.in || 0;
+      countOut = data.out || 0;
+      eventLogs = data.logs || [];
+    } else {
+      countIn = 0; countOut = 0; eventLogs = [];
+    }
+    
+    updateCounterUI();
+    renderLogs();
+    
+    // [추가] 완료 상태 버튼 업데이트
+    updateCompletionUI();
 
-    const url = sel.selectedOptions[0].dataset.url;
+    // 선택된 옵션의 URL 찾기
+    const selectedOption = Array.from(sel.options).find(opt => opt.value === video_id);
+    if (!selectedOption) return; // 방어 코드
+
+    const url = selectedOption.dataset.url;
     v.src = url;
     v.load();
     setPlaybackRate(currentSpeed);
@@ -308,7 +350,85 @@
     };
   }
 
-  // --- Box Fetching ---
+  // --- Counter & Log Functions ---
+  function updateCounterUI() {
+    if (displayIn) displayIn.textContent = countIn;
+    if (displayOut) displayOut.textContent = countOut;
+  }
+  function renderLogs() {
+    logPreview.innerHTML = '';
+    for (let i = eventLogs.length - 1; i >= 0; i--) {
+      const log = eventLogs[i];
+      const timeStr = formatTime(log.rawTime);
+      const div = document.createElement('div');
+      div.innerHTML = `<span style="color:#666">[${timeStr}]</span> ${log.type}`;
+      logPreview.appendChild(div);
+    }
+  }
+  function addLog(type) {
+    eventLogs.push({ rawTime: v.currentTime, type: type });
+    renderLogs();
+    saveSessionToStorage(); 
+  }
+  function removeLastLog(type) {
+    for (let i = eventLogs.length - 1; i >= 0; i--) {
+      if (eventLogs[i].type === type) {
+        eventLogs.splice(i, 1); renderLogs(); saveSessionToStorage(); return;
+      }
+    }
+  }
+  window.manualAdjust = function(type, delta) {
+    if (type === 'in') {
+      if (delta > 0) { countIn++; addLog('IN'); } 
+      else if (countIn > 0) { countIn--; removeLastLog('IN'); }
+    } else {
+      if (delta > 0) { countOut++; addLog('OUT'); } 
+      else if (countOut > 0) { countOut--; removeLastLog('OUT'); }
+    }
+    updateCounterUI();
+  };
+  window.clearCurrentVideoLog = function() {
+    if (confirm(`'${currentVideo}'의 로그를 초기화하시겠습니까?`)) {
+      countIn = 0; countOut = 0; eventLogs = [];
+      updateCounterUI(); renderLogs(); saveSessionToStorage();
+    }
+  };
+  window.downloadCSV = function() {
+    if (eventLogs.length === 0) { alert("No logs for this video."); return; }
+    let csv = "data:text/csv;charset=utf-8,Video ID,Video Time,Real Time,Type\n"; 
+    eventLogs.forEach(row => {
+      csv += `${currentVideo},${formatTime(row.rawTime)},${formatTime(row.rawTime + 28800)},${row.type}\n`;
+    });
+    csv += `\nSummary,,\nTotal IN,${countIn},\nTotal OUT,${countOut},\n`;
+    const encodedUri = encodeURI(csv);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `log_${currentVideo}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // --- Standard Player Logic ---
+  function resizeCanvasToVideo() {
+    const rect = v.getBoundingClientRect();
+    c.width = Math.floor(rect.width);
+    c.height = Math.floor(rect.height);
+    c.style.width = rect.width + 'px';
+    c.style.height = rect.height + 'px';
+  }
+  function resizeTimeline() {
+    const rect = tl.getBoundingClientRect();
+    tl.width = Math.floor(v.getBoundingClientRect().width);
+    tl.style.width = tl.width + 'px';
+    tl.height = Math.floor(rect.height);
+  }
+  function setPlaybackRate(rate) {
+    const r = Number.isFinite(rate) ? rate : 1;
+    currentSpeed = r;
+    v.playbackRate = r;
+    speedSelect.value = String(r);
+  }
   function clearBoxesCache() {
     boxesCache = new Map();
     inflightBoxes = null;
@@ -335,72 +455,49 @@
     inflightBoxes = { start, end, promise };
     return promise;
   }
-
-  // --- Render Loop ---
+  async function getBoxesForFrame(frame) {
+    const cached = boxesCache.get(frame);
+    if (cached) return cached;
+    await schedulePrefetch(frame);
+    return boxesCache.get(frame) || [];
+  }
   function currentFrame() {
     return Math.max(0, Math.round(v.currentTime * FPS));
   }
-
   function drawBoxes(boxes) {
     ctx.clearRect(0, 0, c.width, c.height);
     if (!overlayToggle.checked) return;
-
-    // [수정됨] 정적 필터 적용
-    let boxesToDraw = boxes || [];
-    if (staticFilterOn.checked) {
-      const threshold = parseInt(staticThresRange.value);
-      // 필터링: 오래 머문 박스는 제외된 리스트를 반환
-      boxesToDraw = staticFilter.process(boxes, threshold);
-    } else {
-      // 꺼져있어도 트래커 내부 상태 업데이트를 위해 process는 호출하되 원본 사용
-      staticFilter.process(boxes, 99999);
-    }
-
-    if (boxesToDraw.length === 0) return;
-
+    if (!boxes || boxes.length === 0) return;
     const vw = v.videoWidth;
     const vh = v.videoHeight;
     if (!vw || !vh) return;
     const sx = c.width / vw;
     const sy = c.height / vh;
-
     ctx.lineWidth = 2;
     ctx.strokeStyle = 'red';
-    for (const b of boxesToDraw) {
+    for (const b of boxes) {
       const w = b.width * sx;
       const h = b.height * sy;
       const x = b.x * sx - w / 2;
       const y = b.y * sy - h / 2;
       ctx.strokeRect(x, y, w, h);
     }
-    
-    // 디버깅용: 텍스트 갱신
-    if (boxes) {
-      boxesPre.textContent = `Raw: ${boxes.length}, Filtered: ${boxesToDraw.length}\n` + JSON.stringify(boxesToDraw, null, 2);
-    }
+    boxesPre.textContent = `Count: ${boxes.length}\n` + JSON.stringify(boxes, null, 2);
   }
-
   async function tick() {
     if (v.readyState >= 2 && currentVideo) {
       const f = currentFrame();
       if (f !== lastFrame) {
         lastFrame = f;
         const cached = boxesCache.get(f);
-        
-        // 데이터가 있든 없든 drawBoxes를 호출하여(빈 배열이라도) 필터 상태 갱신
         const boxes = cached || [];
-        if (!cached) {
-            schedulePrefetch(f);
-        }
-        
+        if (!cached) schedulePrefetch(f);
         drawBoxes(boxes);
         info.textContent = `t=${formatTime(v.currentTime)}, frame=${f}`;
       }
     }
     requestAnimationFrame(tick);
   }
-
-  // --- Timeline Drawing ---
   function drawTimeline() {
     if (!timeline) return;
     if (!tl.width) resizeTimeline();
@@ -419,8 +516,6 @@
       tlx.fillRect(x0, H - h, Math.max(1, x1 - x0), h);
     }
   }
-
-  // --- UI Update Helper ---
   function updatePlayPauseLabel() {
     playPauseBtn.textContent = v.paused ? 'Play' : 'Pause';
   }
@@ -431,63 +526,6 @@
     const dur = Number.isFinite(v.duration) ? v.duration : 0;
     timeLbl.textContent = `${formatTime(v.currentTime)} / ${formatTime(dur)}`;
   }
-
-  // --- Event Listeners: Counter ---
-  function resetCounters() {
-    countIn = 0; countOut = 0; eventLogs = [];
-    updateCounterUI(); renderLogs();
-  }
-  function updateCounterUI() {
-    if (displayIn) displayIn.textContent = countIn;
-    if (displayOut) displayOut.textContent = countOut;
-  }
-  function renderLogs() {
-    logPreview.innerHTML = '';
-    for (let i = eventLogs.length - 1; i >= 0; i--) {
-      const log = eventLogs[i];
-      const timeStr = formatTime(log.rawTime);
-      const div = document.createElement('div');
-      div.textContent = `[${timeStr}] ${log.type}`;
-      logPreview.appendChild(div);
-    }
-  }
-  function addLog(type) {
-    eventLogs.push({ rawTime: v.currentTime, type: type });
-    renderLogs(); 
-  }
-  function removeLastLog(type) {
-    for (let i = eventLogs.length - 1; i >= 0; i--) {
-      if (eventLogs[i].type === type) {
-        eventLogs.splice(i, 1); renderLogs(); return;
-      }
-    }
-  }
-  window.manualAdjust = function(type, delta) {
-    if (type === 'in') {
-      if (delta > 0) { countIn++; } 
-      else if (countIn > 0) { countIn--; removeLastLog('IN'); }
-    } else {
-      if (delta > 0) { countOut++; } 
-      else if (countOut > 0) { countOut--; removeLastLog('OUT'); }
-    }
-    updateCounterUI();
-  };
-  window.downloadCSV = function() {
-    if (eventLogs.length === 0) { alert("No logs."); return; }
-    let csv = "data:text/csv;charset=utf-8,Video Time,Real Time,Type\n"; 
-    eventLogs.forEach(row => {
-      csv += `${formatTime(row.rawTime)},${formatTime(row.rawTime + 28800)},${row.type}\n`;
-    });
-    csv += `\nSummary,,\nTotal IN,${countIn},\nTotal OUT,${countOut},\n`;
-    const link = document.createElement("a");
-    link.setAttribute("href", encodeURI(csv));
-    link.setAttribute("download", currentVideo ? `log_${currentVideo}.csv` : "log.csv");
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  // --- Event Listeners: Player ---
   playPauseBtn.addEventListener('click', async () => {
     v.paused ? v.play().catch(()=>{}) : v.pause();
     updatePlayPauseLabel();
@@ -521,8 +559,8 @@
     else if (e.code === 'ArrowRight') { e.preventDefault(); moveFrame(1); lastFrame = -1; }
     else if (e.key.toLowerCase() === 'n') { e.preventDefault(); jumpHit('next'); }
     else if (e.key.toLowerCase() === 'p') { e.preventDefault(); jumpHit('prev'); }
-    else if (e.key.toLowerCase() === 'i') { e.preventDefault(); window.manualAdjust('in', 1); addLog('IN'); updateCounterUI(); }
-    else if (e.key.toLowerCase() === 'o') { e.preventDefault(); window.manualAdjust('out', 1); addLog('OUT'); updateCounterUI(); }
+    else if (e.key.toLowerCase() === 'i') { e.preventDefault(); window.manualAdjust('in', 1); }
+    else if (e.key.toLowerCase() === 'o') { e.preventDefault(); window.manualAdjust('out', 1); }
   });
   tl.addEventListener('click', (e) => {
     if (!timeline || !currentVideo || !v.duration) return;
@@ -538,18 +576,24 @@
   document.getElementById('nextHit').onclick = () => jumpHit('next');
   window.addEventListener('resize', () => { resizeCanvasToVideo(); resizeTimeline(); drawTimeline(); updateTimeUI(); });
 
-  // [추가됨] 필터 슬라이더 이벤트
-  staticThresRange.addEventListener('input', () => {
-    staticThresDisplay.textContent = staticThresRange.value;
-    // 슬라이더 조정 시 즉시 반영을 위해 현재 프레임 다시 그리기 시도
-    lastFrame = -1; 
-  });
-
   async function moveFrame(delta) { if(currentVideo) v.currentTime = (currentFrame() + delta) / FPS + 0.0001; }
+  
   async function jumpHit(dir) {
-    if(!currentVideo) return;
-    const r = await fetch(`/api/videos/${currentVideo}/${dir}_hit?frame=${currentFrame()}`);
-    if(r.ok) { const j = await r.json(); if(j.frame != null) v.currentTime = j.frame / FPS + 0.0001; }
+    if (!currentVideo) { console.warn("No video selected."); return; }
+    const currentF = currentFrame();
+    const url = `/api/videos/${currentVideo}/${dir}_hit?frame=${currentF}`;
+    try {
+      const r = await fetch(url);
+      if (!r.ok) { console.error(`[JumpHit] Server Error: ${r.status}`); return; }
+      const j = await r.json();
+      if (j.frame !== null && j.frame !== undefined) {
+        v.currentTime = j.frame / FPS + 0.0001;
+      } else {
+        console.warn("[JumpHit] No more hits found.");
+      }
+    } catch (e) {
+      console.error("[JumpHit] Network/JS Error:", e);
+    }
   }
 
   loadVideos();

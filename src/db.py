@@ -27,7 +27,7 @@ def get_video_list() -> List[Dict]:
             {
                 "video_id": vid,
                 "file": path.name,
-                "url": f"/videos/{path.name}",
+                "url": f"videos/{path.name}",
                 "fps": FPS,
             }
         )

@@ -1,6 +1,9 @@
 <!doctype html>
 <meta charset="utf-8">
 <title>Video + YOLO Boxes Viewer</title>
+<head>
+  <base href="/videoviewer/">
+</head>
 <style>
   body { font-family: sans-serif; margin: 0; }
   .wrap { display: grid; grid-template-columns: 2fr 1fr; gap: 12px; padding: 12px; }
@@ -256,7 +259,8 @@
 
   // --- Data Loading ---
   async function loadVideos() {
-    const r = await fetch('/api/videos');
+    const r = await fetch('api/videos');
+    console.log(r);
     const list = await r.json();
     sel.innerHTML = '';
     for (const it of list) {
@@ -291,7 +295,7 @@
     seek.max = '0';
     timeLbl.textContent = '00:00:00 / 00:00:00';
 
-    const tr = await fetch(`/api/videos/${video_id}/timeline?bin_sec=${binSec}`);
+    const tr = await fetch(`api/videos/${video_id}/timeline?bin_sec=${binSec}`);
     const tj = await tr.json();
     timeline = tj.counts;
     drawTimeline();
@@ -315,7 +319,7 @@
   }
   async function fetchBoxesRange(start, end) {
     if (!currentVideo) return {};
-    const r = await fetch(`/api/videos/${currentVideo}/boxes_range?start_frame=${start}&end_frame=${end}`);
+    const r = await fetch(`api/videos/${currentVideo}/boxes_range?start_frame=${start}&end_frame=${end}`);
     if (!r.ok) return {};
     const j = await r.json();
     for (const [k, v] of Object.entries(j.boxes || {})) {
@@ -548,7 +552,7 @@
   async function moveFrame(delta) { if(currentVideo) v.currentTime = (currentFrame() + delta) / FPS + 0.0001; }
   async function jumpHit(dir) {
     if(!currentVideo) return;
-    const r = await fetch(`/api/videos/${currentVideo}/${dir}_hit?frame=${currentFrame()}`);
+    const r = await fetch(`api/videos/${currentVideo}/${dir}_hit?frame=${currentFrame()}`);
     if(r.ok) { const j = await r.json(); if(j.frame != null) v.currentTime = j.frame / FPS + 0.0001; }
   }
 

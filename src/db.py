@@ -29,11 +29,18 @@ def video_id_from_parquet(path: Path) -> str:
 
 
 def get_video_list() -> List[Dict]:
-    if not VIDEOS_DIR.exists():
+    if not BOXES_DIR.exists():
         return []
     out = []
-    for path in sorted(VIDEOS_DIR.glob("*.mp4")):
+    for path in sorted(BOXES_DIR.glob("*.mp4")):
         vid = video_id_from_name(path)
+
+        pattern_glob = f"*{vid}*.parquet"
+        matches = list(BOXES_DIR.glob(pattern_glob))
+        
+        if not matches:
+            # 데이터 파일이 없으면 목록에 추가하지 않고 건너뜁니다.
+            continue
 
         log_data = load_video_log(vid)
 

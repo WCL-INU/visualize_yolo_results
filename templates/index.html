@@ -492,6 +492,14 @@
       toggleProgressBtn.style.borderColor = "#ccc";
     }
 
+    // 완료 상태면 카운터 버튼들 비활성화 (UI 처리)
+    const counterBtns = document.querySelectorAll('.counter-controls button');
+    counterBtns.forEach(btn => {
+      btn.disabled = isCompleted; // 버튼 비활성화 속성
+      btn.style.opacity = isCompleted ? "0.5" : "1"; // 흐리게 처리
+      btn.style.cursor = isCompleted ? "not-allowed" : "pointer"; // 마우스 커서 변경
+    });
+
     // 드롭다운 텍스트도 갱신
     updateDropdownCurrentText();
   }
@@ -749,6 +757,10 @@
     }
   }
   window.manualAdjust = function (type, delta) {
+    // 완료 상태이면 아무 동작도 하지 않고 종료
+    if (isCompleted) {
+      return; 
+    }
     if (type === 'in') {
       if (delta > 0) { countIn++; addLog('IN'); }
       else if (countIn > 0) { countIn--; removeLastLog('IN'); }

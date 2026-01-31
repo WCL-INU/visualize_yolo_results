@@ -113,9 +113,9 @@ def ensure_view(video_id: str) -> str:
         if video_id in _video_cache:
             return _video_cache[video_id][1]
 
-        # Support split parquet files like "{video_id}_*.parquet"
-        pattern = BOXES_DIR / f"{video_id}_*.parquet"
-        matches = sorted(BOXES_DIR.glob(f"{video_id}_*.parquet"))
+        # Support split parquet files like "{video_id}*.parquet"
+        pattern = BOXES_DIR / f"{video_id}*.parquet"
+        matches = sorted(BOXES_DIR.glob(f"{video_id}*.parquet"))
 
         # Use the glob pattern so parquet_scan reads all parts when there are multiple files
         if not matches:

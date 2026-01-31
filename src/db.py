@@ -32,7 +32,7 @@ def get_video_list() -> List[Dict]:
     if not BOXES_DIR.exists():
         return []
     out = []
-    for path in sorted(BOXES_DIR.glob("*.mp4")):
+    for path in sorted(VIDEOS_DIR.glob("*.mp4")):
         vid = video_id_from_name(path)
 
         pattern_glob = f"*{vid}*.parquet"

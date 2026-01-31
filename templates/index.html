@@ -353,6 +353,7 @@
   let boxesCache = new Map();
   let inflightBoxes = null;
   let currentSpeed = parseFloat(speedSelect.value) || 1;
+  let selectVideo_seq = 0;
 
   // --- State Variables ---
   let countIn = 0;
@@ -683,6 +684,7 @@
 
   async function selectVideo(video_id) {
     currentVideo = video_id;
+    let my = ++selectVideo_seq;
     lastFrame = -1;
     boxesPre.textContent = '-';
     info.textContent = '';
@@ -720,8 +722,14 @@
     const tr = await fetch(`${API_BASE}/videos/${video_id}/timeline?bin_sec=${binSec}`);
     const tj = await tr.json();
     timeline = tj.counts;
-    console.log("Loaded timeline with", timeline.length, "bins");
-    console.log("Video duration:", v.duration, "seconds");
+
+    // wait for video metadata so v.duration is defined
+    await new Promise((resolve) => {
+      if (v.readyState >= 1 && Number.isFinite(v.duration)) return resolve();
+      v.addEventListener('loadedmetadata', resolve, { once: true });
+    });
+    if (my !== selectVideo_seq) return; // 중간에 다른 비디오로 변경됨
+
     if (v.duration > timeline.length * binSec) {
       // 비디오 길이가 타임라인 길이보다 길면 타임라인 확장
       const neededBins = Math.ceil(v.duration / binSec);
@@ -731,18 +739,16 @@
       }
       timeline = extended;
     }
-    drawTimeline();
 
-    v.onloadedmetadata = () => {
-      resizeCanvasToVideo();
-      resizeTimeline();
-      drawTimeline();
-      schedulePrefetch(0);
-      if (Number.isFinite(v.duration)) {
-        seek.max = String(Math.max(0, v.duration));
-        timeLbl.textContent = `${formatTime(v.currentTime)} / ${formatTime(v.duration)}`;
-      }
-    };
+    // 초기화 완료 후 UI 업데이트
+    resizeCanvasToVideo();
+    resizeTimeline();
+    drawTimeline();
+    schedulePrefetch(0);
+    if (Number.isFinite(v.duration)) {
+      seek.max = String(Math.max(0, v.duration));
+      timeLbl.textContent = `${formatTime(v.currentTime)} / ${formatTime(v.duration)}`;
+    }
   }
 
   // --- Box Fetching ---

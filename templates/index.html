@@ -269,7 +269,7 @@
 <script>
   const FPS = Number('{{ FPS }}');
 
-  const API_BASE = `${window.location.origin}/api`;
+  const API_BASE = `${window.location.pathname.split('/')[1]}/api`;
 
   // --- HTML Elements ---
   const sel = document.getElementById('sel');
@@ -552,12 +552,13 @@
 
     let url = selectedOption.dataset.url;
 
-    // [핵심] 만약 URL이 /로 시작하면, base 태그가 무시되어 루트(/)로 가버립니다.
-    // 현재 서버가 루트(/videos) 요청을 거부하고 있으므로, 
-    // 앞의 슬래시를 제거해 base 태그(/videoviewer/)가 적용되도록 강제합니다.
     if (url.startsWith('/')) {
-      url = url.substring(1);
+      // 절대 경로인 경우 
+      url = url.substring(1); // 앞의 슬래시 제거
     }
+
+    // 라우팅을 고려하여 API_BASE의 호스트 부분만 사용
+    url = `${API_BASE.split('/')[0]}/${url}`;
 
     v.src = url;
     v.load();

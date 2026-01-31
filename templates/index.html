@@ -59,6 +59,7 @@
     border-radius: 4px;
     border: 1px solid #eee;
   }
+
   .filter-group select {
     border: 1px solid #ccc;
     border-radius: 3px;
@@ -140,8 +141,16 @@
     background-color: #45a049;
   }
 
-  .clear-btn { flex: 1; background-color: #f44336; color: white; border: none; }
-  .clear-btn:hover { background-color: #d32f2f; }
+  .clear-btn {
+    flex: 1;
+    background-color: #f44336;
+    color: white;
+    border: none;
+  }
+
+  .clear-btn:hover {
+    background-color: #d32f2f;
+  }
 
   /* 완료 상태 버튼 스타일 */
   #toggleCompleteBtn {
@@ -150,31 +159,38 @@
     border-radius: 4px;
     transition: all 0.2s;
   }
+
   #toggleCompleteBtn.incomplete {
     background-color: #f0f0f0;
     color: #555;
   }
+
   #toggleCompleteBtn.incomplete:hover {
     background-color: #e0e0e0;
   }
+
   #toggleCompleteBtn.completed {
-    background-color: #4CAF50; /* Green */
+    background-color: #4CAF50;
+    /* Green */
     color: white;
     border-color: #45a049;
   }
+
   #toggleCompleteBtn.completed:hover {
     background-color: #45a049;
   }
 
   /* 작업중 버튼 스타일 */
   #toggleProgressBtn.incomplete {
-      background-color: #f0f0f0;
-      color: #555;
+    background-color: #f0f0f0;
+    color: #555;
   }
+
   #toggleProgressBtn.completed {
-      background-color: #ff9800; /* Orange */
-      color: white;
-      border-color: #e68900;
+    background-color: #ff9800;
+    /* Orange */
+    color: white;
+    border-color: #e68900;
   }
 
   /* 저장 상태 표시 */
@@ -191,12 +207,12 @@
       <div class="filter-group">
         <label>Date:</label>
         <select id="filterDate">
-            <option value="all">All</option>
+          <option value="all">All</option>
         </select>
-        
+
         <label style="margin-left:8px;">Device:</label>
         <select id="filterDevice">
-            <option value="all">All</option>
+          <option value="all">All</option>
         </select>
       </div>
 
@@ -359,85 +375,85 @@
   // 규칙: cut_DEVICE-ID_DATE 
   // 예시: cut_ANU-25-summer-9_20260106
   function parseVideoInfo(video_id) {
-      const parts = video_id.split('_');
-      
-      // 최소 3덩어리 (cut, device, date)가 되어야 함
-      if (parts.length < 3) {
-          // 형식이 안 맞을 경우 전체를 디바이스로 표시하거나 Unknown 처리
-          return { device: 'Other', date: 'Unknown' };
-      }
-      
-      // 1. 날짜: 맨 마지막 부분
-      // 예: 20260106
-      const date = parts[parts.length - 1];
-      
-      // 2. 디바이스: 맨 앞('cut')과 맨 뒤('date')를 제외한 중간 부분
-      // slice(1, -1)을 사용하면 중간에 언더스코어가 더 섞여 있어도 안전하게 합칠 수 있음
-      // 예: ['cut', 'ANU-25-summer-9', '20260106'] -> 'ANU-25-summer-9'
-      const device = parts.slice(1, -1).join('_');
-      
-      return { device, date };
+    const parts = video_id.split('_');
+
+    // 최소 3덩어리 (cut, device, date)가 되어야 함
+    if (parts.length < 3) {
+      // 형식이 안 맞을 경우 전체를 디바이스로 표시하거나 Unknown 처리
+      return { device: 'Other', date: 'Unknown' };
+    }
+
+    // 1. 날짜: 맨 마지막 부분
+    // 예: 20260106
+    const date = parts[parts.length - 1];
+
+    // 2. 디바이스: 맨 앞('cut')과 맨 뒤('date')를 제외한 중간 부분
+    // slice(1, -1)을 사용하면 중간에 언더스코어가 더 섞여 있어도 안전하게 합칠 수 있음
+    // 예: ['cut', 'ANU-25-summer-9', '20260106'] -> 'ANU-25-summer-9'
+    const device = parts.slice(1, -1).join('_');
+
+    return { device, date };
   }
 
   // --- [신규] 필터 초기화 및 로직 ---
   function initFilters() {
-      // 유니크한 날짜와 디바이스 추출
-      const dates = new Set();
-      const devices = new Set();
+    // 유니크한 날짜와 디바이스 추출
+    const dates = new Set();
+    const devices = new Set();
 
-      masterVideoList.forEach(item => {
-          const info = parseVideoInfo(item.video_id);
-          dates.add(info.date);
-          devices.add(info.device);
-      });
+    masterVideoList.forEach(item => {
+      const info = parseVideoInfo(item.video_id);
+      dates.add(info.date);
+      devices.add(info.device);
+    });
 
-      // 날짜 드롭다운 채우기
-      const sortedDates = Array.from(dates).sort().reverse(); // 최신 날짜 위로
-      filterDate.innerHTML = '<option value="all">All Dates</option>';
-      sortedDates.forEach(d => {
-          const opt = document.createElement('option');
-          opt.value = d;
-          opt.textContent = d;
-          filterDate.appendChild(opt);
-      });
+    // 날짜 드롭다운 채우기
+    const sortedDates = Array.from(dates).sort().reverse(); // 최신 날짜 위로
+    filterDate.innerHTML = '<option value="all">All Dates</option>';
+    sortedDates.forEach(d => {
+      const opt = document.createElement('option');
+      opt.value = d;
+      opt.textContent = d;
+      filterDate.appendChild(opt);
+    });
 
-      // 디바이스 드롭다운 채우기
-      const sortedDevices = Array.from(devices).sort();
-      filterDevice.innerHTML = '<option value="all">All Devices</option>';
-      sortedDevices.forEach(d => {
-          const opt = document.createElement('option');
-          opt.value = d;
-          opt.textContent = d;
-          filterDevice.appendChild(opt);
-      });
+    // 디바이스 드롭다운 채우기
+    const sortedDevices = Array.from(devices).sort();
+    filterDevice.innerHTML = '<option value="all">All Devices</option>';
+    sortedDevices.forEach(d => {
+      const opt = document.createElement('option');
+      opt.value = d;
+      opt.textContent = d;
+      filterDevice.appendChild(opt);
+    });
   }
 
   function applyFilters() {
-      const selectedDate = filterDate.value;
-      const selectedDevice = filterDevice.value;
+    const selectedDate = filterDate.value;
+    const selectedDevice = filterDevice.value;
 
-      filteredVideoList = masterVideoList.filter(item => {
-          const info = parseVideoInfo(item.video_id);
-          const dateMatch = (selectedDate === 'all') || (info.date === selectedDate);
-          const deviceMatch = (selectedDevice === 'all') || (info.device === selectedDevice);
-          return dateMatch && deviceMatch;
-      });
+    filteredVideoList = masterVideoList.filter(item => {
+      const info = parseVideoInfo(item.video_id);
+      const dateMatch = (selectedDate === 'all') || (info.date === selectedDate);
+      const deviceMatch = (selectedDevice === 'all') || (info.device === selectedDevice);
+      return dateMatch && deviceMatch;
+    });
 
-      renderVideoDropdown();
-      
-      // 필터 결과가 있으면 첫 번째 선택, 없으면 리셋
-      if (filteredVideoList.length > 0) {
-          // 현재 재생 중인 영상이 필터링 목록에 있으면 유지, 아니면 첫번째로 변경
-          const stillExists = filteredVideoList.find(v => v.video_id === currentVideo);
-          if (stillExists) {
-              sel.value = currentVideo;
-          } else {
-              sel.value = filteredVideoList[0].video_id;
-              selectVideo(sel.value);
-          }
+    renderVideoDropdown();
+
+    // 필터 결과가 있으면 첫 번째 선택, 없으면 리셋
+    if (filteredVideoList.length > 0) {
+      // 현재 재생 중인 영상이 필터링 목록에 있으면 유지, 아니면 첫번째로 변경
+      const stillExists = filteredVideoList.find(v => v.video_id === currentVideo);
+      if (stillExists) {
+        sel.value = currentVideo;
       } else {
-          sel.innerHTML = '<option>No videos match</option>';
+        sel.value = filteredVideoList[0].video_id;
+        selectVideo(sel.value);
       }
+    } else {
+      sel.innerHTML = '<option>No videos match</option>';
+    }
   }
 
   // 필터 변경 이벤트 리스너

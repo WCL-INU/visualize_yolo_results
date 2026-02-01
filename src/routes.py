@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
-from typing import List
+from typing import List, Tuple
 
 from src.db import (
     ensure_view,
@@ -10,25 +10,30 @@ from src.db import (
     query_boxes,
     query_boxes_range,
     query_next_hit,
+    query_next_hit_with_blacklist,
     query_prev_hit,
+    query_prev_hit_with_blacklist,
     query_timeline,
     load_video_log,
-    save_video_log
+    save_video_log,
 )
 from src.templates import render_index
 
 router = APIRouter()
 
+
 class LogItem(BaseModel):
     rawTime: float
     type: str
 
+
 class VideoLogData(BaseModel):
-    in_count: int      # Python 예약어 in 피하기 위해 in_count 사용
+    in_count: int  # Python 예약어 in 피하기 위해 in_count 사용
     out_count: int
     is_completed: bool
     is_in_progress: bool = False
     logs: List[LogItem]
+
 
 @router.get("/")
 def index():
@@ -44,13 +49,16 @@ def api_videos():
     # 개별 선택 시 로그를 로드하는 방식으로 진행
     return videos
 
+
 # --- [추가] 로그 API ---
+
 
 @router.get("/api/logs/{video_id}")
 def api_get_logs(video_id: str):
     """서버에 저장된 해당 비디오의 로그 불러오기"""
     data = load_video_log(video_id)
     return data
+
 
 @router.post("/api/logs/{video_id}")
 def api_save_logs(video_id: str, payload: VideoLogData):
@@ -61,7 +69,7 @@ def api_save_logs(video_id: str, payload: VideoLogData):
         "out": payload.out_count,
         "is_completed": payload.is_completed,
         "is_in_progress": payload.is_in_progress,
-        "logs": [log.dict() for log in payload.logs]
+        "logs": [log.dict() for log in payload.logs],
     }
     success = save_video_log(video_id, data_dict)
     return {"success": success}
@@ -98,8 +106,52 @@ def api_next_hit(video_id: str, frame: int = Query(..., ge=0)):
     return {"frame": next_frame}
 
 
+@router.get("/api/videos/{video_id}/next_hit_with_blacklist")
+def api_next_hit_with_blacklist(
+    video_id: str,
+    frame: int = Query(..., ge=0),
+    blacklist: str = Query(""),
+):
+    view = ensure_view(video_id)
+    if not blacklist:
+        next_frame = query_next_hit(view, frame)
+        return {"frame": next_frame}
+    # 블랙리스트 파싱
+    blacklist_boxes: List[Tuple[int, int, int, int]] = []
+    for item in blacklist.split(";"):
+        try:
+            x1, y1, x2, y2 = map(int, item.split(","))
+            blacklist_boxes.append((x1, y1, x2, y2))
+        except Exception:
+            continue
+    next_frame = query_next_hit_with_blacklist(view, frame, blacklist_boxes)
+    return {"frame": next_frame}
+
+
 @router.get("/api/videos/{video_id}/prev_hit")
 def api_prev_hit(video_id: str, frame: int = Query(..., ge=0)):
     view = ensure_view(video_id)
     prev_frame = query_prev_hit(view, frame)
+    return {"frame": prev_frame}
+
+
+@router.get("/api/videos/{video_id}/prev_hit_with_blacklist")
+def api_prev_hit_with_blacklist(
+    video_id: str,
+    frame: int = Query(..., ge=0),
+    blacklist: str = Query(""),
+):
+    view = ensure_view(video_id)
+    if not blacklist:
+        prev_frame = query_prev_hit(view, frame)
+        return {"frame": prev_frame}
+    # 블랙리스트 파싱
+    blacklist_boxes: List[Tuple[int, int, int, int]] = []
+    for item in blacklist.split(";"):
+        try:
+            x1, y1, x2, y2 = map(int, item.split(","))
+            blacklist_boxes.append((x1, y1, x2, y2))
+        except Exception:
+            continue
+    prev_frame = query_prev_hit_with_blacklist(view, frame, blacklist_boxes)
     return {"frame": prev_frame}

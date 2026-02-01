@@ -27,13 +27,14 @@
     max-height: 78vh;
     background: #00000000;
     object-fit: contain;
+    pointer-events: none;
   }
 
   canvas {
     position: absolute;
     left: 0;
     top: 0;
-    pointer-events: none;
+    pointer-events: auto;
   }
 
   .panel {
@@ -233,6 +234,7 @@
       </div>
 
       <label style="margin-left:12px;"><input type="checkbox" id="overlay" checked> Overlay</label>
+      <button id="clearBlacklist" style="margin-left:8px;">Clear Blacklist</button>
     </div>
 
     <div class="player" id="player">
@@ -347,6 +349,8 @@
   const displayOut = document.getElementById('displayOut');
   const logPreview = document.getElementById('logPreview');
 
+  const clearBlacklistBtn = document.getElementById('clearBlacklist');
+
   // --- Global State ---
   let isSeeking = false;
   let currentVideo = null;
@@ -360,6 +364,8 @@
   let inflightBoxes = null;
   let currentSpeed = parseFloat(speedSelect.value) || 1;
   let selectVideo_seq = 0;
+  let blacklistBoxes = [];
+  let blacklistBoxes_canvas = [];
 
   // --- State Variables ---
   let countIn = 0;
@@ -800,8 +806,24 @@
   function drawBoxes(boxes) {
     ctx.clearRect(0, 0, c.width, c.height);
     if (!overlayToggle.checked) return;
-    if (!boxes || boxes.length === 0) return;
 
+    if (blacklistBoxes_canvas.length > 0) {
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = 'blue';
+      for (const b of blacklistBoxes_canvas) {
+        const x1 = b[0];
+        const y1 = b[1];
+        const x2 = b[2];
+        const y2 = b[3];
+        const w = (x2 - x1);
+        const h = (y2 - y1);
+        const x = x1;
+        const y = y1;
+        ctx.strokeRect(x, y, w, h);
+      }
+    }
+
+    if (!boxes || boxes.length === 0) return;
     const vw = v.videoWidth;
     const vh = v.videoHeight;
     if (!vw || !vh) return;
@@ -816,6 +838,7 @@
       const x = b.x * sx - w / 2;
       const y = b.y * sy - h / 2;
       ctx.strokeRect(x, y, w, h);
+      ctx.strokeRect(b.x * sx - 1, b.y * sy - 1, 2, 2); // center dot
     }
 
     boxesPre.textContent = `Count: ${boxes.length}\n` + JSON.stringify(boxes, null, 2);
@@ -966,6 +989,11 @@
     v.paused ? v.play().catch(() => { }) : v.pause();
     updatePlayPauseLabel();
   });
+  clearBlacklistBtn.addEventListener('click', () => {
+    blacklistBoxes = [];
+    blacklistBoxes_canvas = [];
+    lastFrame = -1; // boxes 다시 그리기 트리거
+  });
   v.addEventListener('click', async () => {
     v.paused ? v.play().catch(() => { }) : v.pause();
     updatePlayPauseLabel();
@@ -993,8 +1021,8 @@
     if (e.code === 'Space') { e.preventDefault(); v.paused ? v.play().catch(() => { }) : v.pause(); }
     else if (e.key === ',') { e.preventDefault(); moveFrame(-1); lastFrame = -1; }
     else if (e.key === '.') { e.preventDefault(); moveFrame(1); lastFrame = -1; }
-    else if (e.key.toLowerCase() === 'n') { e.preventDefault(); jumpHit('next'); }
-    else if (e.key.toLowerCase() === 'b') { e.preventDefault(); jumpHit('prev'); }
+    else if (e.key.toLowerCase() === 'n') { e.preventDefault(); jumpHit_avoid_blacklist('next'); }
+    else if (e.key.toLowerCase() === 'b') { e.preventDefault(); jumpHit_avoid_blacklist('prev'); }
     else if (e.key.toLowerCase() === 'i') { e.preventDefault(); window.manualAdjust('in', 1); updateCounterUI(); } // Keydown에서는 addLog 중복 방지 (manualAdjust가 호출하므로)
     else if (e.key.toLowerCase() === 'o') { e.preventDefault(); window.manualAdjust('out', 1); updateCounterUI(); }
   });
@@ -1002,19 +1030,30 @@
   tl.addEventListener('click', (e) => {
     if (!timeline || !currentVideo || !v.duration) return;
     const rect = tl.getBoundingClientRect();
-    console.log('Click position:', e.clientX);
-    console.log('Timeline width:', rect.width);
-    console.log('Timeline length:', timeline.length);
     const t = clamp(Math.floor((e.clientX - rect.left) * timeline.length / rect.width), 0, timeline.length - 1) * binSec;
     v.currentTime = clamp(t, 0, v.duration - 0.01);
+  });
+  c.addEventListener('click', (e) => {
+    const rect = c.getBoundingClientRect();
+    const xc = Math.round((e.clientX - rect.left) * (c.width / rect.width));
+    const yc = Math.round((e.clientY - rect.top) * (c.height / rect.height));
+    const x = Math.round((e.clientX - rect.left) * (v.videoWidth / rect.width));
+    const y = Math.round((e.clientY - rect.top) * (v.videoHeight / rect.height));
+    const sx = c.width / v.videoWidth;
+    const sy = c.height / v.videoHeight;
+    const boxsz = 20; // half-size
+
+    ctx.fillRect(xc - boxsz * sx, yc - boxsz * sy, 2 * boxsz * sx, 2 * boxsz * sy);
+    blacklistBoxes.push([x - boxsz, y - boxsz, x + boxsz, y + boxsz]);
+    blacklistBoxes_canvas.push([xc - boxsz * sx, yc - boxsz * sy, xc + boxsz * sx, yc + boxsz * sy]);
   });
   document.getElementById('reload').onclick = loadVideos;
   sel.onchange = () => selectVideo(sel.value);
   document.getElementById('prevF').onclick = () => moveFrame(-1);
   document.getElementById('nextF').onclick = () => moveFrame(1);
 
-  document.getElementById('prevHit').onclick = () => jumpHit('prev');
-  document.getElementById('nextHit').onclick = () => jumpHit('next');
+  document.getElementById('prevHit').onclick = () => jumpHit_avoid_blacklist('prev');
+  document.getElementById('nextHit').onclick = () => jumpHit_avoid_blacklist('next');
   window.addEventListener('resize', () => { resizeCanvasToVideo(); resizeTimeline(); drawTimeline(); updateTimeUI(); });
 
   async function moveFrame(delta) { if (currentVideo) v.currentTime = (currentFrame() + delta) / FPS + 0.0001; }
@@ -1023,6 +1062,25 @@
     if (!currentVideo) { console.warn("No video selected."); return; }
     const currentF = currentFrame();
     const url = `${API_BASE}/videos/${currentVideo}/${dir}_hit?frame=${currentF}`;
+    try {
+      const r = await fetch(url);
+      if (!r.ok) { console.error(`[JumpHit] Server Error: ${r.status}`); return; }
+      const j = await r.json();
+      if (j.frame !== null && j.frame !== undefined) {
+        v.currentTime = j.frame / FPS + 0.0001;
+      } else {
+        console.warn("[JumpHit] No more hits found.");
+      }
+    } catch (e) {
+      console.error("[JumpHit] Network/JS Error:", e);
+    }
+  }
+
+  async function jumpHit_avoid_blacklist(dir) {
+    if (!currentVideo) { console.warn("No video selected."); return; }
+    const currentF = currentFrame();
+    const encodedBlacklist = blacklistBoxes.map(b => b.join(",")).join(";");
+    const url = `${API_BASE}/videos/${currentVideo}/${dir}_hit_with_blacklist?frame=${currentF}&blacklist=${encodedBlacklist}`;
     try {
       const r = await fetch(url);
       if (!r.ok) { console.error(`[JumpHit] Server Error: ${r.status}`); return; }

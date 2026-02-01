@@ -37,7 +37,7 @@ def get_video_list() -> List[Dict]:
 
         pattern_glob = f"*{vid}*.parquet"
         matches = list(BOXES_DIR.glob(pattern_glob))
-        
+
         if not matches:
             # 데이터 파일이 없으면 목록에 추가하지 않고 건너뜁니다.
             continue
@@ -58,10 +58,11 @@ def get_video_list() -> List[Dict]:
                 "fps": FPS,
                 "status": status,
                 "in_count": log_data.get("in", 0),
-                "out_count": log_data.get("out", 0)
+                "out_count": log_data.get("out", 0),
             }
         )
     return out
+
 
 def load_video_log(video_id: str) -> Dict[str, Any]:
     """
@@ -69,18 +70,13 @@ def load_video_log(video_id: str) -> Dict[str, Any]:
     파일이 없으면 기본 초기값을 반환합니다.
     """
     log_path = LOG_DIR / f"{video_id}.json"
-    
+
     # 기본 구조
-    default_log = {
-        "in": 0,
-        "out": 0,
-        "is_completed": False,
-        "logs": []
-    }
+    default_log = {"in": 0, "out": 0, "is_completed": False, "logs": []}
 
     if not log_path.exists():
         return default_log
-    
+
     try:
         with open(log_path, "r", encoding="utf-8") as f:
             data = json.load(f)
@@ -96,7 +92,7 @@ def save_video_log(video_id: str, data: Dict[str, Any]) -> bool:
     프론트엔드에서 받은 작업 데이터를 JSON 파일로 저장합니다.
     """
     log_path = LOG_DIR / f"{video_id}.json"
-    
+
     try:
         with open(log_path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
@@ -104,6 +100,7 @@ def save_video_log(video_id: str, data: Dict[str, Any]) -> bool:
     except Exception as e:
         print(f"[DB] Error saving log for {video_id}: {e}")
         return False
+
 
 def ensure_view(video_id: str) -> str:
     """
@@ -224,11 +221,65 @@ def query_next_hit(view: str, frame: int) -> int | None:
         return int(row[0])
 
 
+def query_next_hit_with_blacklist(
+    view: str, frame: int, blacklist: List[Tuple[int, int, int, int]]
+) -> int | None:
+    # blacklist: List of (x1, y1, x2, y2) always x1 < x2 and y1 < y2
+    # return the next frame where no boxes intersect with any blacklisted area
+    condition_sentence = (
+        "("
+        + " AND ".join(
+            [
+                f"NOT (x BETWEEN {x1} AND {x2} AND y BETWEEN {y1} AND {y2})"
+                for x1, y1, x2, y2 in blacklist
+            ]
+        )
+        + ")"
+    )
+    with db_lock:
+        row = con.execute(
+            f"""
+            SELECT MIN(frame) FROM {view} WHERE frame > ? AND {condition_sentence}
+            """,
+            [frame],
+        ).fetchone()
+        if not row or row[0] is None:
+            return None
+        return int(row[0])
+
+
 def query_prev_hit(view: str, frame: int) -> int | None:
     with db_lock:
         row = con.execute(
             f"""
             SELECT MAX(frame) FROM {view} WHERE frame < ?
+            """,
+            [frame],
+        ).fetchone()
+        if not row or row[0] is None:
+            return None
+        return int(row[0])
+
+
+def query_prev_hit_with_blacklist(
+    view: str, frame: int, blacklist: List[Tuple[int, int, int, int]]
+) -> int | None:
+    # blacklist: List of (x1, y1, x2, y2) always x1 < x2 and y1 < y2
+    # return the previous frame where no boxes intersect with any blacklisted area
+    condition_sentence = (
+        "("
+        + " AND ".join(
+            [
+                f"NOT (x BETWEEN {x1} AND {x2} AND y BETWEEN {y1} AND {y2})"
+                for x1, y1, x2, y2 in blacklist
+            ]
+        )
+        + ")"
+    )
+    with db_lock:
+        row = con.execute(
+            f"""
+            SELECT MAX(frame) FROM {view} WHERE frame < ? AND {condition_sentence}
             """,
             [frame],
         ).fetchone()
